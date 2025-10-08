@@ -1,17 +1,17 @@
+// Vercel API handler - this is the entry point for all requests
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
-require('dotenv').config();
 
 // Import routes
-const authRoutes = require('./routes/auth');
-const tokenRoutes = require('./routes/tokens');
-const userRoutes = require('./routes/users');
-const rewardRoutes = require('./routes/rewards');
-const feedbackRoutes = require('./routes/feedback');
+const authRoutes = require('../routes/auth');
+const tokenRoutes = require('../routes/tokens');
+const userRoutes = require('../routes/users');
+const rewardRoutes = require('../routes/rewards');
+const feedbackRoutes = require('../routes/feedback');
 
 const app = express();
 
@@ -27,27 +27,6 @@ const allowedOrigin = (process.env.FRONTEND_URL || 'http://localhost:3000').trim
 const additionalAllowedOrigins = [
   'https://tokenofthankss.vercel.app'
 ];
-
-// Log the FRONTEND_URL for debugging
-console.log('🔍 FRONTEND_URL:', JSON.stringify(allowedOrigin));
-console.log('🔍 FRONTEND_URL length:', allowedOrigin.length);
-console.log('🔍 FRONTEND_URL char codes:', Array.from(allowedOrigin).map(c => c.charCodeAt(0)));
-
-// Validate the origin URL
-const isValidUrl = (string) => {
-  try {
-    new URL(string);
-    return true;
-  } catch (_) {
-    return false;
-  }
-};
-
-if (!isValidUrl(allowedOrigin)) {
-  console.error('❌ Invalid FRONTEND_URL:', allowedOrigin);
-  console.error('❌ Please check your environment variables for extra spaces or newlines');
-  process.exit(1);
-}
 
 // Enhanced CORS configuration
 app.use(cors({
@@ -80,7 +59,6 @@ app.use('/api/', limiter);
 // Request logging middleware for debugging
 app.use((req, res, next) => {
   console.log(`📥 ${req.method} ${req.path}`);
-  console.log('📋 Headers:', JSON.stringify(req.headers, null, 2));
   next();
 });
 
@@ -115,7 +93,6 @@ app.use('/api/feedback', feedbackRoutes);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err.message);
-  console.error('❌ Stack:', err.stack);
   
   // Handle CORS errors specifically
   if (err.message === 'Not allowed by CORS') {
@@ -141,35 +118,38 @@ app.use('*', (req, res) => {
   });
 });
 
-// MongoDB connection
+// MongoDB connection for serverless
+let isConnected = false;
+
 const connectDB = async () => {
+  if (isConnected) {
+    return;
+  }
+  
   try {
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
+    isConnected = true;
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    process.exit(1);
+    throw error;
   }
 };
 
-// Start server
-const PORT = process.env.PORT || 5000;
-
-// For local development only
-if (process.env.NODE_ENV !== 'production') {
-  const startServer = async () => {
+// Connect to MongoDB on first request
+app.use(async (req, res, next) => {
+  try {
     await connectDB();
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📧 Email notifications: ${process.env.EMAIL_USER ? 'Configured' : 'Not configured'}`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Database connection failed'
     });
-  };
-  startServer();
-}
+  }
+});
 
-// Export for local development
-module.exports = app; 
+module.exports = app;
