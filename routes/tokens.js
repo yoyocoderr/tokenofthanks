@@ -134,11 +134,35 @@ router.get('/history', auth, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
+    const type = (req.query.type || 'ALL').toUpperCase();
 
-    const transactions = await TokenTransaction.getUserHistory(userId, limit, skip);
-    const total = await TokenTransaction.countDocuments({
+    // Build base filter: transactions involving the user
+    let baseFilter = {
       $or: [{ sender: userId }, { recipient: userId }]
-    });
+    };
+
+    // Apply type-specific filtering
+    let filter = { ...baseFilter };
+    if (type === 'SEND') {
+      filter = { sender: userId, transactionType: 'SEND' };
+    } else if (type === 'RECEIVE') {
+      // We record SEND transactions only; RECEIVED are SEND where current user is recipient
+      filter = { recipient: userId, transactionType: 'SEND' };
+    } else if (type === 'PURCHASE') {
+      filter = { ...baseFilter, transactionType: 'PURCHASE' };
+    } else if (type === 'REDEEM') {
+      filter = { ...baseFilter, transactionType: 'REDEEM' };
+    }
+
+    const [transactions, total] = await Promise.all([
+      TokenTransaction.find(filter)
+        .populate('sender', 'firstName lastName email')
+        .populate('recipient', 'firstName lastName email')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip(skip),
+      TokenTransaction.countDocuments(filter)
+    ]);
 
     res.json({
       success: true,

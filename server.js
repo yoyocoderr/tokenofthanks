@@ -11,6 +11,7 @@ const authRoutes = require('./routes/auth');
 const tokenRoutes = require('./routes/tokens');
 const userRoutes = require('./routes/users');
 const rewardRoutes = require('./routes/rewards');
+const feedbackRoutes = require('./routes/feedback');
 
 const app = express();
 
@@ -100,6 +101,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tokens', tokenRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rewards', rewardRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
