@@ -166,16 +166,18 @@ const connectDB = async () => {
 // Start server
 const PORT = process.env.PORT || 5000;
 
-// For local development only
-if (process.env.NODE_ENV !== 'production') {
-  const startServer = async () => {
-    await connectDB();
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📧 Email notifications: ${process.env.EMAIL_USER ? 'Configured' : 'Not configured'}`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
-    });
-  };
+// Start server for both development and production
+const startServer = async () => {
+  await connectDB();
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📧 Email notifications: ${process.env.EMAIL_USER ? 'Configured' : 'Not configured'}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+};
+
+// Only start server if not already started (for production deployments)
+if (!module.parent) {
   startServer();
 }
 
