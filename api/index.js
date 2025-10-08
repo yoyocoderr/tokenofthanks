@@ -83,6 +83,32 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Database connection test endpoint
+app.get('/api/db-test', async (req, res) => {
+  try {
+    console.log('🧪 Testing database connection...');
+    await connectDB();
+    
+    // Test a simple query
+    const User = require('../models/User');
+    const userCount = await User.countDocuments();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Database connection successful',
+      userCount: userCount,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Database test failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Database connection failed',
+      error: error.message
+    });
+  }
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tokens', tokenRoutes);
@@ -120,34 +146,66 @@ app.use('*', (req, res) => {
 
 // MongoDB connection for serverless
 let isConnected = false;
+let connectionPromise = null;
 
 const connectDB = async () => {
   if (isConnected) {
+    console.log('📊 MongoDB already connected, reusing connection');
     return;
   }
   
-  try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    isConnected = true;
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    throw error;
+  if (connectionPromise) {
+    console.log('📊 MongoDB connection in progress, waiting...');
+    return connectionPromise;
   }
+  
+  console.log('📊 Attempting to connect to MongoDB...');
+  console.log('📊 MONGODB_URI exists:', !!process.env.MONGODB_URI);
+  console.log('📊 NODE_ENV:', process.env.NODE_ENV);
+  
+  connectionPromise = (async () => {
+    try {
+      if (!process.env.MONGODB_URI) {
+        throw new Error('MONGODB_URI environment variable is not set');
+      }
+      
+      const conn = await mongoose.connect(process.env.MONGODB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 10000, // 10 seconds timeout
+        socketTimeoutMS: 45000, // 45 seconds timeout
+      });
+      
+      isConnected = true;
+      console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+      console.log(`✅ Database: ${conn.connection.name}`);
+      return conn;
+    } catch (error) {
+      console.error('❌ MongoDB connection error:', error.message);
+      console.error('❌ Full error:', error);
+      isConnected = false;
+      connectionPromise = null;
+      throw error;
+    }
+  })();
+  
+  return connectionPromise;
 };
 
 // Connect to MongoDB on first request
 app.use(async (req, res, next) => {
+  console.log(`📥 ${req.method} ${req.path} - Checking MongoDB connection`);
+  
   try {
     await connectDB();
+    console.log('✅ MongoDB connection verified');
     next();
   } catch (error) {
+    console.error('❌ MongoDB connection failed:', error.message);
     res.status(500).json({
       success: false,
-      message: 'Database connection failed'
+      message: 'Database connection failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Database error'
     });
   }
 });
