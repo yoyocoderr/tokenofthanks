@@ -25,7 +25,8 @@ app.use(compression());
 // CORS configuration
 const allowedOrigin = (process.env.FRONTEND_URL || 'http://localhost:3000').trim();
 const additionalAllowedOrigins = [
-  'https://tokenofthankss.vercel.app'
+  'https://tokenofthankss.vercel.app',
+  'https://tokenofthanks-rouge.vercel.app'
 ];
 
 // Enhanced CORS configuration
@@ -149,11 +150,13 @@ let isConnected = false;
 let connectionPromise = null;
 
 const connectDB = async () => {
-  if (isConnected) {
+  // Check if already connected and connection is still alive
+  if (isConnected && mongoose.connection.readyState === 1) {
     console.log('📊 MongoDB already connected, reusing connection');
     return;
   }
   
+  // If connection is in progress, wait for it
   if (connectionPromise) {
     console.log('📊 MongoDB connection in progress, waiting...');
     return connectionPromise;
@@ -169,16 +172,41 @@ const connectDB = async () => {
         throw new Error('MONGODB_URI environment variable is not set');
       }
       
+      // Close any existing connection first
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.connection.close();
+      }
+      
       const conn = await mongoose.connect(process.env.MONGODB_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
-        serverSelectionTimeoutMS: 10000, // 10 seconds timeout
+        serverSelectionTimeoutMS: 30000, // 30 seconds timeout
         socketTimeoutMS: 45000, // 45 seconds timeout
+        connectTimeoutMS: 30000, // 30 seconds connection timeout
+        maxPoolSize: 10, // Maintain up to 10 socket connections
+        minPoolSize: 2, // Maintain a minimum of 2 socket connections
+        maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+        bufferMaxEntries: 0, // Disable mongoose buffering
+        bufferCommands: false, // Disable mongoose buffering
       });
       
       isConnected = true;
       console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
       console.log(`✅ Database: ${conn.connection.name}`);
+      
+      // Handle connection events
+      mongoose.connection.on('error', (err) => {
+        console.error('❌ MongoDB connection error:', err);
+        isConnected = false;
+        connectionPromise = null;
+      });
+      
+      mongoose.connection.on('disconnected', () => {
+        console.log('📊 MongoDB disconnected');
+        isConnected = false;
+        connectionPromise = null;
+      });
+      
       return conn;
     } catch (error) {
       console.error('❌ MongoDB connection error:', error.message);
